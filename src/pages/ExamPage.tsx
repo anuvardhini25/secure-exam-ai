@@ -43,12 +43,53 @@ const ExamPage = () => {
     } catch {}
   }, []);
 
+  // --- Alarm sound (Web Audio API, 7 seconds) ---
+  const playAlarmSound = useCallback(() => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const duration = 7;
+      const oscillator1 = ctx.createOscillator();
+      const oscillator2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      oscillator1.type = "square";
+      oscillator2.type = "sawtooth";
+      oscillator1.frequency.setValueAtTime(800, ctx.currentTime);
+      oscillator2.frequency.setValueAtTime(600, ctx.currentTime);
+
+      // Siren sweep effect
+      for (let t = 0; t < duration; t += 0.5) {
+        oscillator1.frequency.setValueAtTime(800, ctx.currentTime + t);
+        oscillator1.frequency.linearRampToValueAtTime(1200, ctx.currentTime + t + 0.25);
+        oscillator1.frequency.linearRampToValueAtTime(800, ctx.currentTime + t + 0.5);
+        oscillator2.frequency.setValueAtTime(600, ctx.currentTime + t);
+        oscillator2.frequency.linearRampToValueAtTime(900, ctx.currentTime + t + 0.25);
+        oscillator2.frequency.linearRampToValueAtTime(600, ctx.currentTime + t + 0.5);
+      }
+
+      gain.gain.setValueAtTime(0.35, ctx.currentTime);
+      gain.gain.setValueAtTime(0, ctx.currentTime + duration);
+
+      oscillator1.connect(gain);
+      oscillator2.connect(gain);
+      gain.connect(ctx.destination);
+
+      oscillator1.start(ctx.currentTime);
+      oscillator2.start(ctx.currentTime);
+      oscillator1.stop(ctx.currentTime + duration);
+      oscillator2.stop(ctx.currentTime + duration);
+
+      setTimeout(() => ctx.close(), (duration + 0.5) * 1000);
+    } catch {}
+  }, []);
+
   // --- Alarm effect ---
   const triggerAlarm = useCallback(() => {
     setIsRedFlash(true);
     setIsShaking(true);
-    setTimeout(() => { setIsRedFlash(false); setIsShaking(false); }, 5000);
-  }, []);
+    playAlarmSound();
+    setTimeout(() => { setIsRedFlash(false); setIsShaking(false); }, 7000);
+  }, [playAlarmSound]);
 
   // --- Add violation ---
   const addViolation = useCallback((type: string, points: number, message: string, voiceMsg: string) => {
