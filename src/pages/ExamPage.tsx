@@ -286,18 +286,14 @@ const ExamPage = () => {
     return () => document.removeEventListener("contextmenu", handler);
   }, [submitted, addViolation]);
 
-  // --- Camera ---
-  useEffect(() => {
-    navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => { if (videoRef.current) videoRef.current.srcObject = stream; }).catch(() => {});
-  }, []);
-
   // --- Auto-submit on high suspicion ---
   useEffect(() => {
-    if (suspicionScore > 80 && !submitted) {
+    if (cfg.autoSubmitEnabled && suspicionScore > cfg.autoSubmitScore && !submitted) {
       speak("High risk cheating behavior detected. Exam is being submitted automatically.");
-      setTimeout(() => submitExam("High suspicion score (>80)"), 3000);
+      setTimeout(() => submitExam(`High suspicion score (>${cfg.autoSubmitScore})`), 3000);
     }
-  }, [suspicionScore, submitted, speak, submitExam]);
+  }, [suspicionScore, submitted, speak, submitExam, cfg]);
+
 
   const formatTime = (s: number) => `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
   const riskLevel = suspicionScore <= 30 ? "Low" : suspicionScore <= 60 ? "Medium" : "High";
