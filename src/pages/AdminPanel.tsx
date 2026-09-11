@@ -73,8 +73,13 @@ const AdminPanel = () => {
 
         {/* Results table */}
         <div className="glass rounded-xl overflow-hidden">
-          <div className="p-6 border-b border-border">
+          <div className="p-6 border-b border-border flex items-center justify-between">
             <h3 className="font-semibold">Exam Results</h3>
+            {examResults.length > 0 && (
+              <button onClick={exportCsv} className="flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg gradient-bg text-primary-foreground font-medium">
+                <Download className="w-3.5 h-3.5" /> Export CSV
+              </button>
+            )}
           </div>
           {examResults.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">No exam submissions yet</div>
@@ -89,23 +94,54 @@ const AdminPanel = () => {
                     <th className="text-left p-4">Suspicion</th>
                     <th className="text-left p-4">Risk</th>
                     <th className="text-left p-4">Violations</th>
+                    <th className="text-left p-4">Max People</th>
+                    <th className="text-left p-4">IP Address</th>
+                    <th className="text-left p-4">IP Changes</th>
                     <th className="text-left p-4">Reason</th>
                   </tr>
                 </thead>
                 <tbody>
                   {examResults.map((r, i) => {
-                    const risk = r.suspicionScore <= 30 ? "Low" : r.suspicionScore <= 60 ? "Medium" : "High";
-                    const riskColor = r.suspicionScore <= 30 ? "text-success" : r.suspicionScore <= 60 ? "text-warning" : "text-destructive";
+                    const risk = riskLabel(r.suspicionScore);
+                    const riskColor = risk === "Low" ? "text-success" : risk === "Medium" ? "text-warning" : "text-destructive";
+                    const summary = r.proctorSummary || summarizeEvents((r.violations || []) as any);
+                    const open = expanded === i;
                     return (
-                      <tr key={i} className="border-b border-border/50 hover:bg-secondary/50 transition">
-                        <td className="p-4 font-medium">{r.userName}</td>
-                        <td className="p-4 text-muted-foreground">{r.college}</td>
-                        <td className="p-4">{r.score}</td>
-                        <td className="p-4">{r.suspicionScore}</td>
-                        <td className={`p-4 font-semibold ${riskColor}`}>{risk}</td>
-                        <td className="p-4">{r.violations?.length || 0}</td>
-                        <td className="p-4 text-muted-foreground text-xs">{r.submissionReason}</td>
-                      </tr>
+                      <>
+                        <tr key={i} onClick={() => setExpanded(open ? null : i)} className="border-b border-border/50 hover:bg-secondary/50 transition cursor-pointer">
+                          <td className="p-4 font-medium">{r.userName}</td>
+                          <td className="p-4 text-muted-foreground">{r.college}</td>
+                          <td className="p-4">{r.score}</td>
+                          <td className="p-4">{r.suspicionScore}</td>
+                          <td className={`p-4 font-semibold ${riskColor}`}>{risk}</td>
+                          <td className="p-4">{r.violations?.length || 0}</td>
+                          <td className="p-4">{(summary as any).maxPeopleDetected ?? 1}</td>
+                          <td className="p-4 font-mono text-xs">{r.ip || "unknown"}</td>
+                          <td className="p-4">{r.ipChanges ?? 0}</td>
+                          <td className="p-4 text-muted-foreground text-xs">{r.submissionReason}</td>
+                        </tr>
+                        {open && (
+                          <tr key={`${i}-detail`} className="bg-secondary/30">
+                            <td colSpan={10} className="p-4">
+                              <div className="text-xs font-semibold mb-2">Proctoring Timeline</div>
+                              {(r.violations || []).length === 0 ? (
+                                <div className="text-xs text-muted-foreground">No proctoring events recorded.</div>
+                              ) : (
+                                <div className="space-y-1">
+                                  {(r.violations || []).map((v: any, j: number) => (
+                                    <div key={j} className="flex items-center justify-between text-xs bg-background/40 rounded-md px-3 py-2">
+                                      <span className="font-medium">{v.type}</span>
+                                      <span className="text-muted-foreground truncate mx-3">{v.details || v.message}</span>
+                                      <span className="font-mono text-destructive">+{v.points}</span>
+                                      <span className="text-muted-foreground ml-3">{formatClock(v.timestamp)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        )}
+                      </>
                     );
                   })}
                 </tbody>
@@ -113,6 +149,7 @@ const AdminPanel = () => {
             </div>
           )}
         </div>
+
       </div>
     </div>
   );
