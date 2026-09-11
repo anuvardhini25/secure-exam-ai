@@ -125,19 +125,83 @@ const ExamPage = () => {
     setTimeout(() => { setIsRedFlash(false); setIsShaking(false); }, 7000);
   }, [playAlarmSound]);
 
-  const addViolation = useCallback((type: string, points: number, message: string, voiceMsg: string) => {
-    setViolations((prev) => [...prev, { type, points, timestamp: new Date().toISOString(), message }]);
-    setSuspicionScore((prev) => prev + points);
-    setWarningMessage(message); setShowWarning(true);
-    triggerAlarm(); speak(voiceMsg);
-    setTimeout(() => setShowWarning(false), 5000);
-  }, [triggerAlarm, speak]);
+  const recordEvent = useCallback(
+    (
+      type: string,
+      points: number,
+      details: string,
+      voiceMsg: string,
+      opts: { alarm?: boolean; extra?: Partial<ProctorEvent> } = {},
+    ) => {
+      const ev: ProctorEvent = {
+        id: crypto.randomUUID(),
+        type,
+        category: categoryOf(type),
+        severity: severityForPoints(points),
+        points,
+        details,
+        timestamp: new Date().toISOString(),
+        ...opts.extra,
+      };
+      setViolations((prev) => [...prev, ev]);
+      setSuspicionScore((prev) => prev + points);
+      setWarningMessage(details);
+      setShowWarning(true);
+      if (opts.alarm) triggerAlarm();
+      speak(voiceMsg);
+      setTimeout(() => setShowWarning(false), 5000);
+    },
+    [triggerAlarm, speak],
+  );
+
+  const addViolation = useCallback(
+    (type: string, points: number, message: string, voiceMsg: string) =>
+      recordEvent(type, points, message, voiceMsg, { alarm: true }),
+    [recordEvent],
+  );
+
+  // --- Camera + AI proctoring ---
+  const camera = useCamera({ enabled: !submitted });
+  const detection = useFaceDetection({
+    videoRef: camera.videoRef,
+    enabled: camera.isActive && !submitted,
+    intervalMs: cfg.detectionIntervalMs,
+  });
+  const ipMonitor = useIpMonitor({
+    enabled: !submitted,
+    pollIntervalMs: cfg.ipPollIntervalMs,
+    onIpChange: (prev, next) => {
+      if (!cfg.ipChangeDetectionEnabled) return;
+      recordEvent(
+        "IP Address Changed",
+        cfg.weights.ipChange,
+        `Network address changed during the exam`,
+        "Your network connection changed during the exam. This has been recorded.",
+        { extra: { ip: next, previousIp: prev } },
+      );
+    },
+  });
+
+  useDetectionEvents({
+    active: !submitted,
+    config: cfg,
+    peopleCount: detection.peopleCount,
+    faceVisible: detection.faceVisible,
+    lookingAway: detection.lookingAway,
+    detectionReady: detection.modelReady,
+    cameraStatus: camera.status,
+    onEvent: (e) =>
+      recordEvent(e.type, e.points, e.details, e.voice, {
+        alarm: e.points >= 20,
+        extra: { detectedPeopleCount: e.peopleCount, ip: ipMonitor.ip },
+      }),
+  });
 
   // --- Submit exam ---
   const submitExam = useCallback((reason: string) => {
     if (submitted) return;
     setSubmitted(true);
-    if (videoRef.current?.srcObject) (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+    camera.stop();
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
 
     let score = 0;
@@ -152,12 +216,18 @@ const ExamPage = () => {
       score, suspicionScore, violations,
       timeTaken: Math.round((Date.now() - startTimeRef.current) / 1000),
       submissionReason: reason, submittedAt: new Date().toISOString(),
-      ip: "192.168.1." + Math.floor(Math.random() * 255),
+      startedAt: new Date(startTimeRef.current).toISOString(),
+      ip: ipMonitor.ip || "unknown",
+      initialIp: ipMonitor.initialIp || "unknown",
+      ipChanges: ipMonitor.ipChanges,
+      proctorSummary: summarizeEvents(violations),
       device: navigator.userAgent.slice(0, 60),
     };
     addExamResult(result);
     navigate("/results", { state: result });
-  }, [submitted, answers, suspicionScore, violations, user, addExamResult, navigate, allQuestions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted, answers, suspicionScore, violations, user, addExamResult, navigate, allQuestions, ipMonitor.ip, ipMonitor.initialIp, ipMonitor.ipChanges]);
+
 
   // --- Timer ---
   useEffect(() => {
