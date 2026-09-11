@@ -1,16 +1,34 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Shield, Users, BarChart3, AlertTriangle, LogOut } from "lucide-react";
+import { Shield, Users, BarChart3, AlertTriangle, LogOut, Download } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { riskLabel, summarizeEvents, formatClock } from "@/lib/proctoring";
 
 const AdminPanel = () => {
   const { user, logout, examResults } = useAuth();
   const navigate = useNavigate();
+  const [expanded, setExpanded] = useState<number | null>(null);
 
   useEffect(() => {
     if (!user || user.role !== "admin") navigate("/login");
   }, [user, navigate]);
+
+  const exportCsv = () => {
+    const header = ["Student", "College", "Score", "Suspicion", "Risk", "Violations", "IP", "IP Changes", "Reason", "Submitted"];
+    const rows = examResults.map((r) => [
+      r.userName, r.college, r.score, r.suspicionScore, riskLabel(r.suspicionScore),
+      r.violations?.length || 0, r.ip || "unknown", r.ipChanges ?? 0, r.submissionReason, r.submittedAt,
+    ]);
+    const csv = [header, ...rows].map((row) => row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "secureexam-results.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
 
   const totalStudents = new Set(examResults.map((r) => r.userId)).size;
   const avgScore = examResults.length ? Math.round(examResults.reduce((s, r) => s + r.score, 0) / examResults.length) : 0;
