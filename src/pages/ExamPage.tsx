@@ -3,6 +3,19 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Shield, Clock, AlertTriangle, Code, BookOpen, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useCamera } from "@/hooks/useCamera";
+import { useFaceDetection } from "@/hooks/useFaceDetection";
+import { useIpMonitor } from "@/hooks/useIpMonitor";
+import { useDetectionEvents } from "@/hooks/useDetectionEvents";
+import ProctorMonitor from "@/components/ProctorMonitor";
+import {
+  loadProctorConfig,
+  categoryOf,
+  severityForPoints,
+  summarizeEvents,
+  type ProctorEvent,
+} from "@/lib/proctoring";
+
 
 // --- Part A: MCQ + Short Answer ---
 const partAQuestions = [
@@ -52,7 +65,7 @@ const ExamPage = () => {
   const [codeLangs, setCodeLangs] = useState<Record<number, Language>>({ 6: "python", 7: "python" });
   const [timeLeft, setTimeLeft] = useState(EXAM_DURATION);
   const [suspicionScore, setSuspicionScore] = useState(0);
-  const [violations, setViolations] = useState<Array<{ type: string; points: number; timestamp: string; message: string }>>([]);
+  const [violations, setViolations] = useState<ProctorEvent[]>([]);
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [showWarning, setShowWarning] = useState(false);
   const [warningMessage, setWarningMessage] = useState("");
@@ -62,8 +75,9 @@ const ExamPage = () => {
   const [currentQ, setCurrentQ] = useState(0);
   const [examPart, setExamPart] = useState<"A" | "B">("A");
   const [showPartTransition, setShowPartTransition] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const startTimeRef = useRef(Date.now());
+  const cfg = useRef(loadProctorConfig()).current;
+
 
   const currentQuestions = examPart === "A" ? partAQuestions : partBQuestions;
   const allQuestions = [...partAQuestions, ...partBQuestions];
@@ -111,19 +125,83 @@ const ExamPage = () => {
     setTimeout(() => { setIsRedFlash(false); setIsShaking(false); }, 7000);
   }, [playAlarmSound]);
 
-  const addViolation = useCallback((type: string, points: number, message: string, voiceMsg: string) => {
-    setViolations((prev) => [...prev, { type, points, timestamp: new Date().toISOString(), message }]);
-    setSuspicionScore((prev) => prev + points);
-    setWarningMessage(message); setShowWarning(true);
-    triggerAlarm(); speak(voiceMsg);
-    setTimeout(() => setShowWarning(false), 5000);
-  }, [triggerAlarm, speak]);
+  const recordEvent = useCallback(
+    (
+      type: string,
+      points: number,
+      details: string,
+      voiceMsg: string,
+      opts: { alarm?: boolean; extra?: Partial<ProctorEvent> } = {},
+    ) => {
+      const ev: ProctorEvent = {
+        id: crypto.randomUUID(),
+        type,
+        category: categoryOf(type),
+        severity: severityForPoints(points),
+        points,
+        details,
+        timestamp: new Date().toISOString(),
+        ...opts.extra,
+      };
+      setViolations((prev) => [...prev, ev]);
+      setSuspicionScore((prev) => prev + points);
+      setWarningMessage(details);
+      setShowWarning(true);
+      if (opts.alarm) triggerAlarm();
+      speak(voiceMsg);
+      setTimeout(() => setShowWarning(false), 5000);
+    },
+    [triggerAlarm, speak],
+  );
+
+  const addViolation = useCallback(
+    (type: string, points: number, message: string, voiceMsg: string) =>
+      recordEvent(type, points, message, voiceMsg, { alarm: true }),
+    [recordEvent],
+  );
+
+  // --- Camera + AI proctoring ---
+  const camera = useCamera({ enabled: !submitted });
+  const detection = useFaceDetection({
+    videoRef: camera.videoRef,
+    enabled: camera.isActive && !submitted,
+    intervalMs: cfg.detectionIntervalMs,
+  });
+  const ipMonitor = useIpMonitor({
+    enabled: !submitted,
+    pollIntervalMs: cfg.ipPollIntervalMs,
+    onIpChange: (prev, next) => {
+      if (!cfg.ipChangeDetectionEnabled) return;
+      recordEvent(
+        "IP Address Changed",
+        cfg.weights.ipChange,
+        `Network address changed during the exam`,
+        "Your network connection changed during the exam. This has been recorded.",
+        { extra: { ip: next, previousIp: prev } },
+      );
+    },
+  });
+
+  useDetectionEvents({
+    active: !submitted,
+    config: cfg,
+    peopleCount: detection.peopleCount,
+    faceVisible: detection.faceVisible,
+    lookingAway: detection.lookingAway,
+    detectionReady: detection.modelReady,
+    cameraStatus: camera.status,
+    onEvent: (e) =>
+      recordEvent(e.type, e.points, e.details, e.voice, {
+        alarm: e.points >= 20,
+        extra: { detectedPeopleCount: e.peopleCount, ip: ipMonitor.ip },
+      }),
+  });
 
   // --- Submit exam ---
   const submitExam = useCallback((reason: string) => {
     if (submitted) return;
     setSubmitted(true);
-    if (videoRef.current?.srcObject) (videoRef.current.srcObject as MediaStream).getTracks().forEach((t) => t.stop());
+    camera.stop();
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
 
     let score = 0;
@@ -138,12 +216,18 @@ const ExamPage = () => {
       score, suspicionScore, violations,
       timeTaken: Math.round((Date.now() - startTimeRef.current) / 1000),
       submissionReason: reason, submittedAt: new Date().toISOString(),
-      ip: "192.168.1." + Math.floor(Math.random() * 255),
+      startedAt: new Date(startTimeRef.current).toISOString(),
+      ip: ipMonitor.ip || "unknown",
+      initialIp: ipMonitor.initialIp || "unknown",
+      ipChanges: ipMonitor.ipChanges,
+      proctorSummary: summarizeEvents(violations),
       device: navigator.userAgent.slice(0, 60),
     };
     addExamResult(result);
     navigate("/results", { state: result });
-  }, [submitted, answers, suspicionScore, violations, user, addExamResult, navigate, allQuestions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted, answers, suspicionScore, violations, user, addExamResult, navigate, allQuestions, ipMonitor.ip, ipMonitor.initialIp, ipMonitor.ipChanges]);
+
 
   // --- Timer ---
   useEffect(() => {
@@ -202,18 +286,14 @@ const ExamPage = () => {
     return () => document.removeEventListener("contextmenu", handler);
   }, [submitted, addViolation]);
 
-  // --- Camera ---
-  useEffect(() => {
-    navigator.mediaDevices.getUserMedia({ video: true }).then((stream) => { if (videoRef.current) videoRef.current.srcObject = stream; }).catch(() => {});
-  }, []);
-
   // --- Auto-submit on high suspicion ---
   useEffect(() => {
-    if (suspicionScore > 80 && !submitted) {
+    if (cfg.autoSubmitEnabled && suspicionScore > cfg.autoSubmitScore && !submitted) {
       speak("High risk cheating behavior detected. Exam is being submitted automatically.");
-      setTimeout(() => submitExam("High suspicion score (>80)"), 3000);
+      setTimeout(() => submitExam(`High suspicion score (>${cfg.autoSubmitScore})`), 3000);
     }
-  }, [suspicionScore, submitted, speak, submitExam]);
+  }, [suspicionScore, submitted, speak, submitExam, cfg]);
+
 
   const formatTime = (s: number) => `${Math.floor(s / 60).toString().padStart(2, "0")}:${(s % 60).toString().padStart(2, "0")}`;
   const riskLevel = suspicionScore <= 30 ? "Low" : suspicionScore <= 60 ? "Medium" : "High";
@@ -310,11 +390,33 @@ const ExamPage = () => {
           <div className="text-sm">
             Risk: <span className={`font-bold ${riskColor}`}>{riskLevel} ({suspicionScore})</span>
           </div>
-          <div className="w-20 h-14 rounded-lg overflow-hidden border border-border">
-            <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+          <div className="hidden sm:flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">People</span>
+            <span className={`font-bold ${detection.peopleCount === 1 ? "text-success" : detection.peopleCount === 0 ? "text-warning" : "text-destructive"}`}>
+              {detection.modelReady ? detection.peopleCount : "—"}
+            </span>
           </div>
         </div>
       </div>
+
+      {/* Live proctoring panel */}
+      <div className="fixed bottom-4 right-4 z-30">
+        <ProctorMonitor
+          attach={camera.attach}
+          status={camera.status}
+          errorMessage={camera.errorMessage}
+          onRetry={camera.retry}
+          peopleCount={detection.peopleCount}
+          faceVisible={detection.faceVisible}
+          lookingAway={detection.lookingAway}
+          modelLoading={detection.modelLoading}
+          modelReady={detection.modelReady}
+          modelError={detection.modelError}
+          online={ipMonitor.online}
+          compact
+        />
+      </div>
+
 
       {/* Exam content */}
       <div className="max-w-4xl mx-auto px-4 py-8">

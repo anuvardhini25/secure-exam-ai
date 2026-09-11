@@ -18,7 +18,11 @@ interface ExamResult {
   timeTaken: number;
   submissionReason: string;
   submittedAt: string;
+  startedAt?: string;
   ip: string;
+  initialIp?: string;
+  ipChanges?: number;
+  proctorSummary?: Record<string, number>;
   device: string;
 }
 
@@ -26,8 +30,15 @@ interface Violation {
   type: string;
   points: number;
   timestamp: string;
-  message: string;
+  message?: string;
+  details?: string;
+  category?: string;
+  severity?: string;
+  detectedPeopleCount?: number;
+  ip?: string;
+  previousIp?: string;
 }
+
 
 interface AuthContextType {
   user: User | null;
