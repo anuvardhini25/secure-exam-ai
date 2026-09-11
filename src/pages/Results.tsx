@@ -1,6 +1,8 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Shield, CheckCircle, AlertTriangle, XCircle, Clock, Award } from "lucide-react";
+import { Shield, CheckCircle, AlertTriangle, XCircle, Clock, Award, Download, Globe } from "lucide-react";
+import { summarizeEvents, formatClock, type ProctorEvent } from "@/lib/proctoring";
+
 
 const Results = () => {
   const location = useLocation();
@@ -78,24 +80,71 @@ const Results = () => {
           </div>
         </div>
 
-        {/* Violations list */}
-        {result.violations?.length > 0 && (
+        {/* Proctoring session details */}
+        <div className="glass rounded-2xl p-6 mb-6">
+          <h3 className="font-semibold mb-4 flex items-center gap-2"><Globe className="w-4 h-4 text-primary" /> Proctoring Session</h3>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            {[
+              ["Candidate", result.userName],
+              ["College", result.college],
+              ["Started", result.startedAt ? formatClock(result.startedAt) : "—"],
+              ["Submitted", formatClock(result.submittedAt)],
+              ["IP Address", result.ip || "unknown"],
+              ["Initial IP", result.initialIp || result.ip || "unknown"],
+              ["IP Changes", String(result.ipChanges ?? 0)],
+              ["Device", result.device],
+            ].map(([k, v]) => (
+              <div key={k as string} className="bg-secondary rounded-lg p-3">
+                <div className="text-[11px] text-muted-foreground">{k}</div>
+                <div className="font-medium break-all">{v as string}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Detection statistics */}
+        <div className="glass rounded-2xl p-6 mb-6">
+          <h3 className="font-semibold mb-4">Detection Statistics</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+            {Object.entries(summary).map(([k, v]) => (
+              <div key={k} className="bg-secondary rounded-lg p-3">
+                <div className="text-lg font-bold">{v as number}</div>
+                <div className="text-[11px] text-muted-foreground capitalize">{k.replace(/([A-Z])/g, " $1")}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Violation timeline */}
+        {events.length > 0 && (
           <div className="glass rounded-2xl p-6 mb-6">
-            <h3 className="font-semibold mb-4">Violation Log</h3>
+            <h3 className="font-semibold mb-4">Proctoring Timeline</h3>
             <div className="space-y-2">
-              {result.violations.map((v: any, i: number) => (
-                <div key={i} className="flex items-center justify-between bg-secondary rounded-lg p-3 text-sm">
-                  <span>{v.type}</span>
-                  <span className="text-destructive font-mono">+{v.points}</span>
+              {events.map((v: ProctorEvent, i: number) => (
+                <div key={i} className="flex items-center justify-between gap-3 bg-secondary rounded-lg p-3 text-sm">
+                  <div className="min-w-0">
+                    <div className="font-medium">{v.type}</div>
+                    <div className="text-[11px] text-muted-foreground truncate">{v.details || (v as any).message}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-destructive font-mono">+{v.points}</div>
+                    <div className="text-[11px] text-muted-foreground">{formatClock(v.timestamp)}</div>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        <button onClick={() => navigate("/")} className="w-full py-3 rounded-xl gradient-bg text-primary-foreground font-semibold hover:opacity-90 transition">
-          Back to Home
-        </button>
+        <div className="flex gap-3">
+          <button onClick={() => window.print()} className="flex-1 py-3 rounded-xl bg-secondary font-semibold hover:bg-secondary/80 transition flex items-center justify-center gap-2">
+            <Download className="w-4 h-4" /> Download Report
+          </button>
+          <button onClick={() => navigate("/")} className="flex-1 py-3 rounded-xl gradient-bg text-primary-foreground font-semibold hover:opacity-90 transition">
+            Back to Home
+          </button>
+        </div>
+
       </div>
     </div>
   );
