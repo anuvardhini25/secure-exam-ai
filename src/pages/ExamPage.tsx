@@ -390,11 +390,33 @@ const ExamPage = () => {
           <div className="text-sm">
             Risk: <span className={`font-bold ${riskColor}`}>{riskLevel} ({suspicionScore})</span>
           </div>
-          <div className="w-20 h-14 rounded-lg overflow-hidden border border-border">
-            <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+          <div className="hidden sm:flex items-center gap-2 text-xs">
+            <span className="text-muted-foreground">People</span>
+            <span className={`font-bold ${detection.peopleCount === 1 ? "text-success" : detection.peopleCount === 0 ? "text-warning" : "text-destructive"}`}>
+              {detection.modelReady ? detection.peopleCount : "—"}
+            </span>
           </div>
         </div>
       </div>
+
+      {/* Live proctoring panel */}
+      <div className="fixed bottom-4 right-4 z-30">
+        <ProctorMonitor
+          attach={camera.attach}
+          status={camera.status}
+          errorMessage={camera.errorMessage}
+          onRetry={camera.retry}
+          peopleCount={detection.peopleCount}
+          faceVisible={detection.faceVisible}
+          lookingAway={detection.lookingAway}
+          modelLoading={detection.modelLoading}
+          modelReady={detection.modelReady}
+          modelError={detection.modelError}
+          online={ipMonitor.online}
+          compact
+        />
+      </div>
+
 
       {/* Exam content */}
       <div className="max-w-4xl mx-auto px-4 py-8">
