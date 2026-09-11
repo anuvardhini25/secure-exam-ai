@@ -3,6 +3,19 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Shield, Clock, AlertTriangle, Code, BookOpen, ChevronRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useCamera } from "@/hooks/useCamera";
+import { useFaceDetection } from "@/hooks/useFaceDetection";
+import { useIpMonitor } from "@/hooks/useIpMonitor";
+import { useDetectionEvents } from "@/hooks/useDetectionEvents";
+import ProctorMonitor from "@/components/ProctorMonitor";
+import {
+  loadProctorConfig,
+  categoryOf,
+  severityForPoints,
+  summarizeEvents,
+  type ProctorEvent,
+} from "@/lib/proctoring";
+
 
 // --- Part A: MCQ + Short Answer ---
 const partAQuestions = [
@@ -52,7 +65,7 @@ const ExamPage = () => {
   const [codeLangs, setCodeLangs] = useState<Record<number, Language>>({ 6: "python", 7: "python" });
   const [timeLeft, setTimeLeft] = useState(EXAM_DURATION);
   const [suspicionScore, setSuspicionScore] = useState(0);
-  const [violations, setViolations] = useState<Array<{ type: string; points: number; timestamp: string; message: string }>>([]);
+  const [violations, setViolations] = useState<ProctorEvent[]>([]);
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   const [showWarning, setShowWarning] = useState(false);
   const [warningMessage, setWarningMessage] = useState("");
@@ -62,8 +75,9 @@ const ExamPage = () => {
   const [currentQ, setCurrentQ] = useState(0);
   const [examPart, setExamPart] = useState<"A" | "B">("A");
   const [showPartTransition, setShowPartTransition] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const startTimeRef = useRef(Date.now());
+  const cfg = useRef(loadProctorConfig()).current;
+
 
   const currentQuestions = examPart === "A" ? partAQuestions : partBQuestions;
   const allQuestions = [...partAQuestions, ...partBQuestions];
