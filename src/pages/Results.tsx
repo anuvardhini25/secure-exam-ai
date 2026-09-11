@@ -25,6 +25,9 @@ const Results = () => {
   const RiskIcon = result.suspicionScore <= 30 ? CheckCircle : result.suspicionScore <= 60 ? AlertTriangle : XCircle;
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}m ${s % 60}s`;
+  const events: ProctorEvent[] = result.violations || [];
+  const summary = result.proctorSummary || summarizeEvents(events);
+
 
   // Circular chart
   const circumference = 2 * Math.PI * 45;
