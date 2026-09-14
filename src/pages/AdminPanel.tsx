@@ -169,6 +169,7 @@ const AdminPanel = () => {
           )}
         </div>
 
+        <ProctorSettings />
       </div>
     </div>
   );
