@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Shield, Users, BarChart3, AlertTriangle, LogOut, Download } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { riskLabel, summarizeEvents, formatClock } from "@/lib/proctoring";
+import ProctorSettings from "@/components/ProctorSettings";
 
 const AdminPanel = () => {
   const { user, logout, examResults } = useAuth();
