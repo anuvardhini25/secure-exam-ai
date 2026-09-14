@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, ReactNode } from "react";
+import type { ProctorSummary } from "@/lib/proctoring";
 
 interface User {
   id: string;
@@ -22,7 +23,7 @@ interface ExamResult {
   ip: string;
   initialIp?: string;
   ipChanges?: number;
-  proctorSummary?: Record<string, number>;
+  proctorSummary?: Record<string, number> | ProctorSummary;
   device: string;
 }
 
