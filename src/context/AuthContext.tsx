@@ -22,7 +22,7 @@ interface ExamResult {
   ip: string;
   initialIp?: string;
   ipChanges?: number;
-  proctorSummary?: Record<string, number>;
+  proctorSummary?: Record<string, number> | ProctorSummary;
   device: string;
 }
 
